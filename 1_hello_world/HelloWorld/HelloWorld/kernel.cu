@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <stdio.h>
+#include "util.hpp"
 
 using namespace std::literals;
 
@@ -45,27 +46,27 @@ int main()
 			// Buffer on device
 			char* dp_source{nullptr};
 			char* dp_destination{ nullptr };
-			cudaMalloc(&dp_source, text_size);
-			cudaMalloc(&dp_destination, text_size);
+			mpv_exception::check(cudaMalloc(&dp_source, text_size));
+			mpv_exception::check(cudaMalloc(&dp_destination, text_size));
 
 			// copy string host -> device, expensive operation
-			cudaMemcpy(dp_source, hp_source, text_size, cudaMemcpyHostToDevice);
+			mpv_exception::check(cudaMemcpy(dp_source, hp_source, text_size, cudaMemcpyHostToDevice));
 
 			// kernel call
 			cs_kernel <<<big,tib>>> (text_size, dp_destination, dp_source);
 
-			cudaDeviceSynchronize();
-			cudaGetLastError();
+			mpv_exception::check(cudaDeviceSynchronize());
+			mpv_exception::check(cudaGetLastError());
 
 			// copy result device -> host
-			cudaMemcpy(hp_destination, dp_destination, text_size, cudaMemcpyDeviceToHost);
+			mpv_exception::check(cudaMemcpy(hp_destination, dp_destination, text_size, cudaMemcpyDeviceToHost));
 			std::cout << "result: " << hp_destination << std::endl;
 			
 			// free memory on host
 			delete[] hp_destination, hp_destination = nullptr;
 			// free memory on device
-			cudaFree(dp_source);
-			cudaFree(dp_destination);
+			mpv_exception::check(cudaFree(dp_source));
+			mpv_exception::check(cudaFree(dp_destination));
 		}
 	}
 	catch (std::exception const& ex)

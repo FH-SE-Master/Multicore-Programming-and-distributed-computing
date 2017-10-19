@@ -2,8 +2,6 @@
 #define      _h_device_host_
 #include <device_launch_parameters.h>
 
-__constant__ auto const g_block_size = 128;
-__constant__ auto const g_points = 50000;
 
 __host__ __device__ __forceinline__
 float norm(float3 const& p, float3 const& q)
@@ -13,7 +11,7 @@ float norm(float3 const& p, float3 const& q)
 	const auto z_diff = p.z - q.z;
 
 	return (x_diff * x_diff) + (y_diff * y_diff) + (z_diff * z_diff);
-}
+} // norm
 
 __host__ __device__ __forceinline__
 int find_closest(const int g_points, float3* p_points, float3 const* p_point)
@@ -36,7 +34,15 @@ int find_closest(const int g_points, float3* p_points, float3 const* p_point)
 	}
 
 	return index;
-}
+} // find_closest
+
+__global__ void find_all_closest_GPU(int const  g_points, float3 * const dp_points, int * const dp_result) {
+	auto const i{ blockIdx.x*blockDim.x + threadIdx.x };
+
+	if (i < g_points) {
+		dp_result[i] = find_closest(g_points, dp_points, dp_points + i);
+	}
+} // find_all_closest_GPU
 
 
 #endif

@@ -13,6 +13,11 @@
 
 using namespace std::literals;
 
+auto const cpu_count = std::max<int>(1, std::thread::hardware_concurrency());
+auto const run_count = 3;
+
+__constant__ auto const g_block_size = 128;
+__constant__ auto const g_points = 50000;
 auto const g_grid_size = grid_size(
 	g_block_size, {g_points , 1, 1}
 );
@@ -23,29 +28,89 @@ int main()
 {
 	try
 	{
-		auto count{0};
-		cudaGetDeviceCount(&count);
-		cudaSetDevice(0);
-
+		int count{0};
+		mpv_exception::check(cudaGetDeviceCount(&count));
 		if (count > 0)
 		{
-			mpv_device::print_device_info();
-			std::vector<float3> data = create_data(point_count, 0.0, 100.0);
+			cudaSetDevice(0);
 
-			auto const tib{32}; // threads/block
-			auto const big{(point_count * sizeof(float3) + tib - 1) / tib};
-			int* hp_indices_d = nullptr;
-			int* hp_indices_h = nullptr;
-			int* dp_indices = nullptr;
-			float3* hp_points = nullptr;
-			float3* dp_points = nullptr;
-			std::copy(data.begin(), data.end(), hp_points);
-			std::copy(data.begin(), data.end(), dp_points);
+			auto const deviceInfo{pfc::cuda::get_device_info()};
+			auto const deviceProps{pfc::cuda::get_device_props()};
 
-			allocate_memory(point_count, hp_indices_d, hp_indices_h, dp_indices, hp_points, dp_points);
+			std::cout << "Device            : " << deviceProps.name << std::endl;
+			std::cout << "Compute capability: " << deviceInfo.cc_major << "." << deviceInfo.cc_minor << std::endl;
+			std::cout << "Arch              : " << deviceInfo.uarch << std::endl;
+			std::cout << std::endl;
+
+			auto const tib{g_block_size}; //threads in block
+			auto const big{(g_points + tib - 1) / tib}; //blocks in grid + round
+			auto hp_points{std::make_unique<float3[]>(g_points)};
+			auto hp_result{std::make_unique<int[]>(g_points)};
+
+			// create data points
+			create_data(g_points, hp_points.get(), 1, 10000);
+
+			// Allocate on device
+			std::cout << "Allocating memory on device ..." << std::endl;
+			float3* dp_points = CUDA_MALLOC(float3, g_points);
+			int* dp_result = CUDA_MALLOC(int, g_points);
+
+			std::cout << "Calculating distances on device (block size " << g_block_size << ", " << run_count << " runs) ..." <<
+				std::endl << std::endl;
+			auto const duration_gpu = mpv_runtime::run_with_measure(run_count, [&]
+		                                                        {
+			                                                        CUDA_MEMCPY(dp_points, hp_points.get(), g_points,
+				                                                        cudaMemcpyHostToDevice);
+			                                                        find_all_closest_GPU << <big, tib >> >(
+				                                                        g_points, dp_points, dp_result);
+			                                                        cudaDeviceSynchronize();
+			                                                        mpv_exception::check(cudaGetLastError());
+			                                                        CUDA_MEMCPY(hp_result.get(), dp_result, g_points,
+				                                                        cudaMemcpyDeviceToHost);
+		                                                        });
+
+			std::cout << "Warming up CPU ..." << std::endl << std::endl;
+			mpv_threading::warm_up_cpu(5s);
+
+			std::cout << "Calculating distances on host (" << cpu_count << " threads, " << run_count << " runs ) ..." << std::
+				endl << std::endl;
+
+			auto chunk{(g_points + cpu_count - 1) / cpu_count};
+			auto const duration_cpu = mpv_runtime::run_with_measure(run_count, [&]
+		                                                        {
+			                                                        std::vector<std::future<void>> task_group;
+			                                                        for (auto i = 0; i < cpu_count; i++)
+			                                                        {
+				                                                        auto index{i};
+				                                                        task_group.push_back(std::async(std::launch::async, [&]
+			                                                                                        {
+				                                                                                        find_all_closest_CPU(
+					                                                                                        g_points, hp_points.get(),
+					                                                                                        hp_result.get(),
+					                                                                                        std::make_pair(
+						                                                                                        index * chunk,
+						                                                                                        (index + 1) * chunk));
+			                                                                                        }));
+			                                                        }
+			                                                        for (auto& f : task_group)
+			                                                        {
+				                                                        f.get();
+			                                                        }
+		                                                        });
+
+
+			std::cout << "GPU time (average of " << run_count << " runs): "
+				<< std::chrono::duration_cast<std::chrono::milliseconds>(duration_gpu).count() << " milliseconds" << std::endl <<
+				std::endl;
+			std::cout
+				<< "CPU time (average of " << run_count << " runs): "
+				<< std::chrono::duration_cast<std::chrono::milliseconds>(duration_cpu).count() << " milliseconds" << std::endl <<
+				std::endl;
+			std::cout << "Speedup: " << mpv_runtime::speedup(duration_cpu, duration_gpu) << std::endl;
 		}
 	}
-	catch (std::runtime_error)
+	catch (std::exception const& x)
 	{
+		std::cerr << x.what() << std::endl;
 	}
 }
