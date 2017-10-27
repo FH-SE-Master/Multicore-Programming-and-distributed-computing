@@ -16,8 +16,8 @@ using namespace std::literals;
 auto const cpu_count = std::max<int>(1, std::thread::hardware_concurrency());
 auto const run_count = 3;
 
-__constant__ auto const g_block_size = 128;
-__constant__ auto const g_points = 50000;
+__constant__ auto const g_block_size = 64;
+__constant__ auto const g_points = 75000;
 auto const g_grid_size = grid_size(
 	g_block_size, {g_points , 1, 1}
 );
@@ -39,7 +39,7 @@ int main()
 
 			std::cout << "Device            : " << deviceProps.name << std::endl;
 			std::cout << "Compute capability: " << deviceInfo.cc_major << "." << deviceInfo.cc_minor << std::endl;
-			std::cout << "Arch              : " << deviceInfo.uarch << std::endl;
+			std::cout << "Arch              : " << deviceInfo.uarch << std::endl; 
 			std::cout << std::endl;
 
 			auto const tib{g_block_size}; //threads in block
@@ -61,13 +61,17 @@ int main()
 		                                                        {
 			                                                        CUDA_MEMCPY(dp_points, hp_points.get(), g_points,
 				                                                        cudaMemcpyHostToDevice);
-			                                                        find_all_closest_GPU << <big, tib >> >(
+			                                                       find_all_closest_GPU << <big, tib >> >(
 				                                                        g_points, dp_points, dp_result);
 			                                                        cudaDeviceSynchronize();
 			                                                        mpv_exception::check(cudaGetLastError());
 			                                                        CUDA_MEMCPY(hp_result.get(), dp_result, g_points,
 				                                                        cudaMemcpyDeviceToHost);
 		                                                        });
+
+			std::cout << "GPU time (average of " << run_count << " runs): "
+				<< std::chrono::duration_cast<std::chrono::milliseconds>(duration_gpu).count() << " milliseconds" << std::endl
+				<< std::endl;
 
 			std::cout << "Warming up CPU ..." << std::endl << std::endl;
 			mpv_threading::warm_up_cpu(5s);
@@ -98,10 +102,6 @@ int main()
 			                                                        }
 		                                                        });
 
-
-			std::cout << "GPU time (average of " << run_count << " runs): "
-				<< std::chrono::duration_cast<std::chrono::milliseconds>(duration_gpu).count() << " milliseconds" << std::endl <<
-				std::endl;
 			std::cout
 				<< "CPU time (average of " << run_count << " runs): "
 				<< std::chrono::duration_cast<std::chrono::milliseconds>(duration_cpu).count() << " milliseconds" << std::endl <<
