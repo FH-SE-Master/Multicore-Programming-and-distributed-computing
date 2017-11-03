@@ -89,9 +89,23 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
     <CudaCompile Include="kernel.cu" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="host.hpp" />
     <ClInclude Include="host_device.hpp" />
+    <ClInclude Include="pfc_base.h" />
     <ClInclude Include="pfc_bitmap.h" />
+    <ClInclude Include="pfc_compiler_macros.h" />
+    <ClInclude Include="pfc_complex.h" />
     <ClInclude Include="pfc_cuda_device_info.h" />
+    <ClInclude Include="pfc_cuda_dim3.h" />
+    <ClInclude Include="pfc_cuda_exception.h" />
+    <ClInclude Include="pfc_cuda_macros.h" />
+    <ClInclude Include="pfc_cuda_memory.h" />
+    <ClInclude Include="pfc_cuda_timer.h" />
+    <ClInclude Include="pfc_parallel.h" />
+    <ClInclude Include="pfc_random.h" />
+    <ClInclude Include="pfc_timer.h" />
+    <ClInclude Include="pfc_traits.h" />
+    <ClInclude Include="pfc_windows.h" />
     <ClInclude Include="util.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
