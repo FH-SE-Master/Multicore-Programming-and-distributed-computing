@@ -29,8 +29,6 @@ __device__ __device__ const std::array<pfc::RGB_4_t, 16> RGB_MAPPING{
 __host__ __device__ inline void calculate_fractal(const int height,
                               const int width,
                               const int max_iterations,
-							  const int start_row, 
-							  const int end_row, 
 							  const pfc::complex<float> initial_value,
                               pfc::bitmap::pixel_t* pixels)
 {

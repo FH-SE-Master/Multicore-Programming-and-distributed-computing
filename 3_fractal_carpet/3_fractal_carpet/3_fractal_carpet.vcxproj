@@ -89,6 +89,7 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
     <CudaCompile Include="kernel.cu" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="device.hpp" />
     <ClInclude Include="host.hpp" />
     <ClInclude Include="host_device.hpp" />
     <ClInclude Include="pfc_base.h" />

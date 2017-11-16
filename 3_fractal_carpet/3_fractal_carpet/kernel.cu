@@ -9,51 +9,32 @@
 #include "host_device.hpp"
 #include "pfc_parallel.h"
 #include "host.hpp"
-
-const int HEIGHT = 1000;
-const int WIDTH = HEIGHT;
-const int MAX_ITERATIONS = 1000;
+#include "device.hpp"
 
 cudaError_t addWithCuda(int* c, const int* a, const int* b, unsigned int size);
 
-__global__ void fractal_kernel(int* c, const int* a, const int* b)
-{
-}
-
 int main()
 {
-
 	try
 	{
-		int count{0};
+		auto count{0};
 		mpv_exception::check(cudaGetDeviceCount(&count));
 		if (count > 0)
 		{
 			cudaSetDevice(0);
 
-			auto const deviceInfo{pfc::cuda::get_device_info()};
-			auto const deviceProps{pfc::cuda::get_device_props()};
+			auto const device_info{pfc::cuda::get_device_info()};
+			auto const device_props{pfc::cuda::get_device_props()};
 
-			std::cout << "Device            : " << deviceProps.name << std::endl;
-			std::cout << "Compute capability: " << deviceInfo.cc_major << "." << deviceInfo.cc_minor << std::endl;
-			std::cout << "Arch              : " << deviceInfo.uarch << std::endl;
+			std::cout << "Device            : " << device_props.name << std::endl;
+			std::cout << "Compute capability: " << device_info.cc_major << "." << device_info.cc_minor << std::endl;
+			std::cout << "Arch              : " << device_info.uarch << std::endl;
 			std::cout << std::endl;
 
-			execute_fractal_serial(HEIGHT, MAX_ITERATIONS);
-			execute_fractal_parallel(4, HEIGHT, MAX_ITERATIONS);
-			/*pfc::bitmap bitmap{WIDTH, HEIGHT};
-			auto duration_thread_single = mpv_runtime::run_with_measure(1, [&]
-		                                                            {
-			                                                            calculate_fractal(HEIGHT, WIDTH, MAX_ITERATIONS, 0, 0, pfc::complex<float>(0,0), bitmap.get_pixels());
-		                                                            });
-			
-			bitmap.to_file("fractal-0-0.jpg");
+			// Test the host execution serial and parallel
+			test_host();
 
-			std::cout << "CPU time (single thread): "
-				<< std::chrono::duration_cast<std::chrono::milliseconds>(duration_thread_single).count() << " milliseconds" << std::
-				endl << std::endl;
-				*/
-			
+			// Test the device execution
 		}
 	}
 	catch (std::exception const& x)
@@ -61,4 +42,3 @@ int main()
 		std::cerr << x.what() << std::endl;
 	}
 }
-
