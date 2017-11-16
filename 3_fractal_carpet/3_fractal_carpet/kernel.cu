@@ -32,9 +32,10 @@ int main()
 			std::cout << std::endl;
 
 			// Test the host execution serial and parallel
-			test_host();
+			test_host(15);
 
 			// Test the device execution
+
 		}
 	}
 	catch (std::exception const& x)
