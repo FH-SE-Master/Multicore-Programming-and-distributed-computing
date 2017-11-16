@@ -44,4 +44,5 @@ __host__ __device__ inline void calculate_fractal(const int size,
 		}
 	}
 }
+
 #endif

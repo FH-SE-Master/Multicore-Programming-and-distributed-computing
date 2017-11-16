@@ -12,7 +12,7 @@ __host__ void inline execute_fractal_serial_each_picture(const int picture_count
 	for (auto i = 1; i <= picture_count; ++i)
 	{
 		pfc::bitmap bitmap{size, size};
-		std::cout << "Calculating single thread (" << i << ")" << std::endl;
+		std::cout << "Calculating single thread (picture-" << i << ")" << std::endl;
 		calculate_fractal(size, max_iterations, 0, size, pfc::complex<float>(0, 0), bitmap.get_pixels());
 		const auto filename = "C:/Users/S1610454013/fractal-execute_fractal_serial_each_picture_" + std::to_string(i) +
 			".jpg";
@@ -39,11 +39,11 @@ __host__ void inline execute_fractal_serial_each_rows(const int picture_count, c
 			{
 				end_row += rest_size;
 			}
-			std::cout << "Calculating single thread (" << i << ")" << std::endl;
+			std::cout << "Calculating single thread (part-" << i << ")" << std::endl;
 			calculate_fractal(size, max_iterations, start_row, end_row, pfc::complex<float>(0, 0), bitmap.get_pixels());
 			start_row = end_row;
 		}
-		const auto filename = "C:/Users/S1610454013/fractal-execute_fractal_serial_each_rows" + std::to_string(i) + ".jpg";
+		const auto filename = "C:/Users/S1610454013/fractal-execute_fractal_serial_each_rows_" + std::to_string(i) + ".jpg";
 		bitmap.to_file(filename);
 		std::cout << "Wrote result to '" << filename << "'" << std::endl;
 	}
@@ -65,6 +65,7 @@ __host__ void inline execute_fractal_parallel_each_picture(const int task_count,
 	                    const auto filename = "C:/Users/S1610454013/fractal-execute_fractal_parallel_each_picture_" + std::
 		                    to_string(chunk) + "_" + std::to_string(begin) + "_" + std::to_string(chunk) + ".jpg";
 	                    bitmap.to_file(filename);
+						std::cout << "Wrote result to '" << filename << "'" << std::endl;
                     });
 }
 
