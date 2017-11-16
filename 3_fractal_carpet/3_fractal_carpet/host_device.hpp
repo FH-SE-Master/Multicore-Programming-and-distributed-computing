@@ -16,20 +16,19 @@ __device__ __device__ const std::array<pfc::RGB_4_t, 16> RGB_MAPPING{
 // https://github.com/boostorg/compute/blob/master/example/mandelbrot.cpp
 // http://jonisalonen.com/2013/lets-draw-the-mandelbrot-set/
 
-__host__ __device__ inline void calculate_fractal(const int height,
-                                                  const int width,
+__host__ __device__ inline void calculate_fractal(const int size,
                                                   const int max_iterations,
                                                   const int start_row,
                                                   const int end_row,
                                                   const pfc::complex<float> initial_value,
                                                   pfc::bitmap::pixel_t* pixels)
 {
-	for (auto row = 0; row < height; row++)
+	for (auto row = start_row; row < end_row; row++)
 	{
-		for (auto col = 0; col < width; col++)
+		for (auto col = 0; col < size; col++)
 		{
-			auto c_re = (col - width / 2.0) * 4.0 / width;
-			auto c_im = (row - height / 2.0) * 4.0 / width;
+			auto c_re = (col - size / 2.0) * 4.0 / size;
+			auto c_im = (row - size / 2.0) * 4.0 / size;
 
 			pfc::complex<float> c(c_re, c_im);
 			pfc::complex<float> z(0, 0);
@@ -41,7 +40,7 @@ __host__ __device__ inline void calculate_fractal(const int height,
 			}
 
 			auto const color_index = i % 16;
-			pixels[row * height + col] = RGB_MAPPING[color_index];
+			pixels[row * size + col] = RGB_MAPPING[color_index];
 		}
 	}
 }

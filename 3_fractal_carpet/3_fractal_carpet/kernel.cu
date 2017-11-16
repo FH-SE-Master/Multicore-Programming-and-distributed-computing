@@ -13,6 +13,8 @@
 
 cudaError_t addWithCuda(int* c, const int* a, const int* b, unsigned int size);
 
+const auto PICTURE_COUNT = 2;
+
 int main()
 {
 	try
@@ -31,8 +33,10 @@ int main()
 			std::cout << "Arch              : " << device_info.uarch << std::endl;
 			std::cout << std::endl;
 
+			const auto cpu_count = pfc::hardware_concurrency();
 			// Test the host execution serial and parallel
-			test_host(15);
+			test_host_globally_parallel_locally_sequential(PICTURE_COUNT);
+			test_host_globally_sequential_locally_parallel(PICTURE_COUNT, cpu_count);
 
 			// Test the device execution
 
