@@ -9,7 +9,7 @@ import scala.util.{Failure, Random, Success}
   * @author Thomas Herzog <herzog.thomas81@gmail.com>
   * @since 11/29/17
   */
-object FuturesExamples extends App {
+object FutureBasics extends App {
 
   val random: Random = new Random()
 
