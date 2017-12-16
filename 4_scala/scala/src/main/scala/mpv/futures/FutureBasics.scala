@@ -1,8 +1,8 @@
-import java.util
+package mpv.futures
 
-import scala.concurrent.{Await, Future}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, Future}
 import scala.util.{Failure, Random, Success}
 
 /**
