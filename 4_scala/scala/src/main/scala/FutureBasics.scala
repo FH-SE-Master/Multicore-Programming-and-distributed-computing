@@ -13,6 +13,7 @@ object FutureBasics extends App {
 
   val random: Random = new Random()
 
+  //region Util functions
   def doWork(id: String): Unit = {
     Thread.sleep(random.nextInt(1000) + 1)
     println(s"#doWork#Thread#id: ${Thread.currentThread().getId} | Id: $id")
@@ -36,7 +37,9 @@ object FutureBasics extends App {
 
     random.nextInt()
   }
+  //endregion
 
+  //region DoInParallel function versions
   /**
     * Executes the two given tasks in parallel
     *
@@ -67,7 +70,10 @@ object FutureBasics extends App {
   def doInParallelOverloadFinder[A](col1: Iterable[A], col2: Iterable[A], finder: Iterable[A] => A): Future[(A,A)] ={
     doInParallelOverloadFor(Future{finder(col1)}, Future{finder(col2)})
   }
+  //endregion
 
+
+  //region Test Functions
   def test_doInParallel_success(): Unit = {
     println("Start: test_doInParallel_success")
 
@@ -144,17 +150,16 @@ object FutureBasics extends App {
     println("Start: test_doInParallelFindMaximum_success")
 
     try {
-      val seqNumbers = for(_ <- 1 to 10) yield { random.nextInt() }
+      val seqNumbers = for(_ <- 1 to 10) yield { random.nextInt(1000) }
       val parts = seqNumbers.splitAt(5)
       val result = doInParallelOverloadFinder(parts._1, parts._2, (iterable: Iterable[Int]) => {iterable.max})
       result onComplete {
-        case Success(t) => {
+        case Success(t) =>
           if(t._1 > t._2) {
             println(s"Maximum found: ${t._1}")
           }else{
             println(s"Maximum found: ${t._2}")
           }
-        }
         case Failure(e) => println(s"Completed: Error: $e ")
       }
 
@@ -166,9 +171,8 @@ object FutureBasics extends App {
 
     println("End: test_doInParallelFindMaximum_success")
   }
+  //endregion
 
-  test_doInParallelFindMaximum_success()
-  /**
   println("===> Starting tests <===")
   test_doInParallel_success()
   println("========================")
@@ -177,6 +181,7 @@ object FutureBasics extends App {
   test_doInParallelOverload_for_success()
   println("========================")
   test_doInParallelOverload_flat_map_success()
+  println("========================")
+  test_doInParallelFindMaximum_success()
   println("===> End tests      <===")
-    */
 }
