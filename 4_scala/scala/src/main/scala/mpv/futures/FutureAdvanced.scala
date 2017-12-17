@@ -2,7 +2,7 @@ package mpv.futures
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Await, Future, Promise}
 import scala.util.{Failure, Random, Success}
 
 /**
@@ -68,6 +68,17 @@ object FutureAdvanced extends App {
     }
 
     futureSequenceRec(list, List.empty[Int])
+  }
+
+  def doCompetitively[T](futures: List[Future[T]]): Future[T] = {
+    val promise: Promise[T] = Promise[T]()
+    futures.foreach(x => x onComplete (_ match {
+      case Success(data) => if (promise.trySuccess(data)) {
+        println(s"Success: Complete promise with: '$data'")
+      };
+      case Failure(ex) => println(s"Failure: '$ex'")
+    }))
+    promise.future
   }
 
 
@@ -197,6 +208,31 @@ object FutureAdvanced extends App {
     println("Start: test_parallelMax2_error_empty")
   }
 
+  def test_doCompetitively_success(): Unit = {
+    println("Start: test_doCompetitively_success")
+
+    for (i <- (1 to 10)) {
+      println(s"Run $i:")
+      val futures: List[Future[Int]] = (1 to 10).map(i => Future {
+        Thread.sleep(1000 + random.nextInt(200))
+        i
+      }).toList
+
+      try {
+        val resultFuture = doCompetitively(futures)
+        resultFuture onComplete {
+          case Success(v) => println(s"Success - $v")
+          case Failure(e) => println(s"Failure - Error: $e")
+        }
+        Await.result(resultFuture, Duration.Inf)
+      } catch {
+        case _ => println("Exception occurred in Future")
+      }
+    }
+
+    println("Start: test_doCompetitively_success")
+  }
+
   //endregion
 
   println("===> Starting tests <===")
@@ -212,5 +248,6 @@ object FutureAdvanced extends App {
   println("========================")
   test_parallelMax2_error_empty()
   println("========================")
+  test_doCompetitively_success()
   println("===> End tests      <===")
 }
