@@ -1,5 +1,6 @@
 package mpv.futures
 
+import scala.annotation.tailrec
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future, Promise}
@@ -56,7 +57,7 @@ object FutureAdvanced extends App {
   }
 
   def futureSequence(list: List[Future[Int]]): Future[List[Int]] = {
-
+    @tailrec
     def futureSequenceRec(list: List[Future[Int]], acc: List[Int]): Future[List[Int]] = {
       if (list.lengthCompare(1) == 0) {
         Future {
