@@ -37,17 +37,19 @@ object FutureBasics extends App {
 
     random.nextInt()
   }
+
   //endregion
 
-  //region DoInParallel function versions
+  //region DoInParallel functions
   /**
     * Executes the two given tasks in parallel
     *
     * @param task1 the first task
-    * @param task2 the secnd task
+    * @param task2 the second task
     */
   def doInParallel(task1: String => Unit, task2: String => Unit): Future[Unit] = {
     println("Starting: task1")
+
     val f1: Future[Unit] = Future {
       task1("task1")
     }
@@ -56,20 +58,50 @@ object FutureBasics extends App {
       task2("task2")
     }
     println("Waiting: task1, task2")
-    for (_ <- f1; _ <- f2) yield {}
+    for (_ <- f1; _ <- f2) yield {
+      println("Done with f2, f2 parallel execution")
+    }
   }
 
-  def doInParallelOverloadFor[U, V](f1: => Future[U], f2: => Future[V]): Future[(U, V)] ={
-    for(u <- f1; v <- f2) yield {(u,v)}
+  /**
+    * Parallel function which uses for for awaiting the future results
+    *
+    * @param f1 function one
+    * @param f2 function 3
+    * @tparam U The result type of value one
+    * @tparam V The result type of value two
+    * @return future with the tuple (U,V)
+    */
+  def doInParallelOverloadFor[U, V](f1: => Future[U], f2: => Future[V]): Future[(U, V)] = {
+    for (u <- f1;
+         v <- f2) yield {
+      (u, v)
+    }
   }
 
-  def doInParallelOverloadFlatMap[U, V](f1: => Future[U], f2: => Future[V]): Future[(U, V)] ={
-    f1 flatMap(x => f2.map(y => {(x,y)}))
+  /**
+    * Parallel function which uses flatMap for awaiting the future results
+    *
+    * @param f1 function one
+    * @param f2 function 3
+    * @tparam U The result type of value one
+    * @tparam V The result type of value two
+    * @return future with the tuple (U,V)
+    */
+  def doInParallelOverloadFlatMap[U, V](f1: => Future[U], f2: => Future[V]): Future[(U, V)] = {
+    f1 flatMap (x => f2.map(y => {
+      (x, y)
+    }))
   }
 
-  def doInParallelOverloadFinder[A](col1: Iterable[A], col2: Iterable[A], finder: Iterable[A] => A): Future[(A,A)] ={
-    doInParallelOverloadFor(Future{finder(col1)}, Future{finder(col2)})
+  def doInParallelOverloadFinder[A](col1: Iterable[A], col2: Iterable[A], finder: Iterable[A] => A): Future[(A, A)] = {
+    doInParallelOverloadFor(Future {
+      finder(col1)
+    }, Future {
+      finder(col2)
+    })
   }
+
   //endregion
 
 
@@ -114,7 +146,11 @@ object FutureBasics extends App {
     println("Start: test_doInParallelOverload_for_success")
 
     try {
-      val result = doInParallelOverloadFor(Future{doWorkWithResult("f1")}, Future{doWorkWithResult("f2")})
+      val result = doInParallelOverloadFor(Future {
+        doWorkWithResult("f1")
+      }, Future {
+        doWorkWithResult("f2")
+      })
       result onComplete {
         case Success(v) => println(s"Completed: SUCCESSFUL: $v")
         case Failure(v) => println(s"Completed: FAILURE:    $v")
@@ -132,7 +168,11 @@ object FutureBasics extends App {
     println("Start: test_doInParallelOverload_flat_map_success")
 
     try {
-      val result = doInParallelOverloadFlatMap(Future{doWorkWithResult("f1")}, Future{doWorkWithResult("f2")})
+      val result = doInParallelOverloadFlatMap(Future {
+        doWorkWithResult("f1")
+      }, Future {
+        doWorkWithResult("f2")
+      })
       result onComplete {
         case Success(v) => println(s"Completed: SUCCESSFUL: $v")
         case Failure(v) => println(s"Completed: FAILURE:    $v")
@@ -146,19 +186,27 @@ object FutureBasics extends App {
     println("End: test_doInParallelOverload_flat_map_success")
   }
 
-  def test_doInParallelFindMaximum_success(): Unit ={
+  def test_doInParallelFindMaximum_success(): Unit = {
     println("Start: test_doInParallelFindMaximum_success")
 
     try {
-      val seqNumbers = for(_ <- 1 to 10) yield { random.nextInt(1000) }
+      val seqNumbers = for (_ <- 1 to 10) yield {
+        random.nextInt(1000)
+      }
       val parts = seqNumbers.splitAt(5)
-      val result = doInParallelOverloadFinder(parts._1, parts._2, (iterable: Iterable[Int]) => {iterable.max})
+      val result = doInParallelOverloadFinder(parts._1, parts._2, (iterable: Iterable[Int]) => {
+        iterable.max
+      })
       result onComplete {
         case Success(t) =>
-          if(t._1 > t._2) {
-            println(s"Maximum found: ${t._1}")
-          }else{
-            println(s"Maximum found: ${t._2}")
+          if (t._1 > t._2) {
+            println(s"Maximum found: t._1=${
+              t._1
+            }")
+          } else {
+            println(s"Maximum found: t._2=${
+              t._2
+            }")
           }
         case Failure(e) => println(s"Completed: Error: $e ")
       }
@@ -171,17 +219,18 @@ object FutureBasics extends App {
 
     println("End: test_doInParallelFindMaximum_success")
   }
+
   //endregion
 
-  println("===> Starting tests <===")
+  println("===> Starting tests <===========================")
   test_doInParallel_success()
-  println("========================")
+  println("================================================")
   test_doInParallel_error()
-  println("========================")
+  println("================================================")
   test_doInParallelOverload_for_success()
-  println("========================")
+  println("================================================")
   test_doInParallelOverload_flat_map_success()
-  println("========================")
+  println("================================================")
   test_doInParallelFindMaximum_success()
-  println("===> End tests      <===")
+  println("===> End tests      <===========================")
 }

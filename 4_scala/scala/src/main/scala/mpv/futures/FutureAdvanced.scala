@@ -22,9 +22,7 @@ object FutureAdvanced extends App {
 
   def parallelMax1(list: List[Int], parts: Int): Future[Int] = {
     if (list == null || list.isEmpty || list.lengthCompare(parts) < 0) {
-      Future {
-        throw new IllegalArgumentException("List must not be null, or empty and parts < list.length")
-      }
+      Future.failed(new IllegalArgumentException("List must not be null, or empty and parts < list.length"))
     } else {
       val size: Int = list.length / parts
       val sequence: Seq[Future[Int]] = (0 until parts).map(i => createMaxFuture(list, i * size, (i * size) + size))
@@ -40,9 +38,7 @@ object FutureAdvanced extends App {
 
   def parallelMax2(list: List[Int], parts: Int): Future[Int] = {
     if (list == null || list.isEmpty || list.lengthCompare(parts) < 0) {
-      Future {
-        throw new IllegalArgumentException("List must not be null, or empty and parts < list.length")
-      }
+      Future.failed(new IllegalArgumentException("List must not be null, or empty and parts < list.length"))
     } else {
       val size: Int = list.length / parts
       val sequence: List[Future[Int]] = (0 until parts).map(i => createMaxFuture(list, i * size, (i * size) + size)).toList

@@ -87,7 +87,7 @@ object MergeSort extends App {
       Future {
         list
       }
-    } else if (list.lengthCompare(maxSize) < 0) {
+    } else if (list.size < maxSize) {
       Future {
         merge(mergeSortSeq(list take n)(ordering),
           mergeSortSeq(list drop n)(ordering))(ordering)
