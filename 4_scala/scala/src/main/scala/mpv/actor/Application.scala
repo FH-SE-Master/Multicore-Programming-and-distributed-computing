@@ -1,16 +1,20 @@
 package mpv.actor
 
-import java.net.URL
+import java.net.{MalformedURLException, URL}
+import java.util.UUID
+import java.util.concurrent.TimeUnit
 
-import akka.actor.{Actor, ActorRef, ActorSystem, Props}
+import akka.actor.SupervisorStrategy.{Resume, Stop}
+import akka.actor.{Actor, ActorRef, ActorSystem, OneForOneStrategy, PoisonPill, Props, Terminated}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.{HttpRequest, HttpResponse, StatusCode}
 import akka.http.scaladsl.unmarshalling.Unmarshal
 import akka.stream.ActorMaterializer
 
 import scala.collection.mutable
-import scala.concurrent.duration.{Duration, FiniteDuration, _}
+import scala.concurrent.duration.{Duration, _}
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
+import scala.util.Random
 import scala.util.matching.Regex
 
 /**
@@ -23,15 +27,15 @@ object Application extends App {
   implicit val materializer = ActorMaterializer()
   implicit val executionContext: ExecutionContextExecutor = system.dispatcher
 
-  val MAX_DOWNLOAD_WORKER = 512
+  val MAX_DOWNLOAD_WORKER = 30
 
   object Action extends Enumeration {
-    val START, STOP = values
+    val START, STOP = Value
   }
 
-  object State extends Enumeration {
-    val STOPPED, RUNNING, WAIT_FOR_STOP = values
-  }
+  class DownloadException(private val message: String = "",
+                          private val cause: Throwable = None.orNull)
+    extends RuntimeException(message, cause)
 
   object WebPage {
     val ANCHOR_TAG_PATTERN = "(?i)<a ([^>]+)>.+?</a>".r
@@ -46,12 +50,16 @@ object Application extends App {
       if (link.startsWith("http"))
         link
       else {
-        val base = new URL(url)
-        new URL(new URL(s"${base.getProtocol}://${base.getHost}"), link).toString
+        try {
+          val base = new URL(url)
+          new URL(new URL(s"${base.getProtocol}://${base.getHost}"), link).toString
+        } catch {
+          case _ => null
+        }
       }
     }
 
-    def findAbsoluteLinks(): Iterator[String] = findLinks() map toAbsoluteUrl
+    def findAbsoluteLinks(): Iterator[String] = findLinks() map toAbsoluteUrl filter (url => url != null)
 
     def findLinks(): Iterator[String] = {
       for {
@@ -70,23 +78,17 @@ object Application extends App {
   }
 
   /**
+    * The base actor which is the base for all implemented actors and provides common
+    * functionality.
+    *
     * @author Thomas Herzog <herzog.thomas81@gmail.com>
     * @since 12/7/17
     */
-  abstract class BaseActor(maxDuration: FiniteDuration) extends Actor {
+  abstract class BaseActor extends Actor {
 
     object Timeout
 
-    // Defaults to 100 millis for all actors if they don't define timeout
-    def this() = {
-      this(100.millis)
-      context.system.scheduler.scheduleOnce(maxDuration, self, Timeout)
-    }
-
-    override def receive: PartialFunction[Any, Unit] = {
-      case Timeout =>
-        println(s"${self.path.name}: TIMEOUT: by scheduler")
-    }
+    override def receive: PartialFunction[Any, Unit] = PartialFunction.empty[Any, Unit]
 
     override def postRestart(reason: Throwable): Unit = {
       println(s"${self.path.name}: RESTARTED: reason: '$reason'")
@@ -97,80 +99,148 @@ object Application extends App {
       println(s"${self.path.name}: UNHANDLED: MESSAGE RECEIVED: $message")
       super.unhandled(message)
     }
-
-    protected def registerForTimeout(): Unit = {
-      context.children foreach context.watch
-    }
   }
 
-  class Crawler(rootUrl: String, maxDepth: Int, pattern: Regex) extends BaseActor(10.millis) {
-    var owner: ActorRef = _
+  /**
+    * The web crawler which searches the web pages provided by links of the given root url
+    * and searches for a pattern in the web pages
+    *
+    * @param owner    the actor owning this crawler
+    * @param rootUrl  the root url where to start
+    * @param maxDepth the maximum depth of to search links
+    * @param pattern  the search pattern for the web pages
+    */
+  class Crawler(owner: ActorRef, rootUrl: String, maxDepth: Int, pattern: Regex) extends BaseActor {
+    val random: Random = new Random()
     var visitedPages = mutable.Set.empty[WebPage]
+    var openUrls = mutable.Set.empty[(Int, String)]
     var visitedUrls = mutable.Set.empty[String]
     var currentUrls = mutable.Set.empty[String]
-    var state: State.ValueSet = State.STOPPED
 
+    /**
+      * Downloads the web page by sending to Downloader
+      *
+      * @param worker the downloader worker
+      * @param msg    the ms to be sent
+      */
     def download(worker: ActorRef, msg: (Int, String)): Unit = {
       currentUrls += msg._2
       println(s"DOWNLOAD: '${self.path}', Level: '${msg._1}', Url: ${msg._2}")
       worker ! msg
     }
 
-    def handle(webPage: WebPage): Unit = {
-      println(s"Self: ${self.path} \r\n Url: ${webPage.url}")
-      visitedPages += webPage
-      visitedUrls += webPage.url
-      currentUrls -= webPage.url
-      val newUrls: mutable.Set[String] = (mutable.Set.empty[String] ++ webPage.findAbsoluteLinks()) --= visitedUrls
+    /**
+      * Creates the workers for downloading the web pages
+      *
+      * @param requestWorkers the count of workers which are requested
+      * @return the created workers, an empty list if no workers could be created
+      */
+    def createWorkers(requestWorkers: Int): Iterable[ActorRef] = {
+      val availableCount = MAX_DOWNLOAD_WORKER - context.children.size
+      var actualCount: Int = requestWorkers
+      if (requestWorkers > availableCount) {
+        actualCount = availableCount
+      }
+      println(s"actualCount: $actualCount | children: ${context.children.size}")
+      if (actualCount > 0) {
+        val workers: Seq[ActorRef] = (1 to actualCount).map(_ => context.actorOf(Props(classOf[Downloader]), s"${classOf[Downloader].getName}_${UUID.randomUUID().toString}"))
+        workers foreach context.watch
+        workers
+      } else {
+        Iterable.empty[ActorRef]
+      }
+    }
 
-      if (newUrls.nonEmpty) {
-        if ((webPage.level + 1) <= maxDepth) {
-          if (context.children.size < MAX_DOWNLOAD_WORKER) {
-            val availableCount = MAX_DOWNLOAD_WORKER - context.children.size
-            var actualCount: Int = newUrls.size
-            if (newUrls.size > availableCount) {
-              actualCount = availableCount
-            }
-
-            val workers: Seq[ActorRef] = (1 to actualCount).map(idx => system.actorOf(Props(classOf[Downloader]), s"${classOf[Downloader].getName}_${webPage.cleanUrlForActor()}_$idx"))
-            registerForTimeout()
-            val workerIt = workers.iterator
-            for (url <- newUrls) {
-              if (workerIt.hasNext) {
-                download(workerIt.next(), (webPage.level + 1, url))
-              }
+    /**
+      * Tries to download the open url where no worker was available
+      */
+    def workOnOpen(): Unit = {
+      openUrls = openUrls.filter(t => !currentUrls.contains(t._2)).filter(t => !visitedUrls.contains(t._2))
+      if (openUrls.nonEmpty) {
+        val workers: Iterable[ActorRef] = createWorkers(openUrls.size)
+        if (workers.nonEmpty) {
+          val workerIt = workers.iterator
+          for (tuple <- openUrls) {
+            if (workerIt.hasNext) {
+              download(workerIt.next(), tuple)
             }
           }
-        } else {
-          println(s"MaxDepth: $maxDepth reached, therefore stopping")
-          state = State.WAIT_FOR_STOP
         }
       }
     }
 
+    /**
+      * Hanlde the downloaded web page
+      *
+      * @param webPage the web page to handle
+      */
+    def handle(webPage: WebPage): Unit = {
+      println(s"Self: ${self.path} \r\n Url: ${webPage.url}")
+      visitedUrls += webPage.url
+      currentUrls -= webPage.url
+      val newUrls: mutable.Set[String] = (mutable.Set.empty[String] ++ webPage.findAbsoluteLinks()) --= visitedUrls
+      var newOpenUrls = mutable.Set.empty[(Int, String)]
+
+      if (pattern.findFirstIn(webPage.content).nonEmpty) {
+        visitedPages += webPage
+      }
+      if (((webPage.level + 1) > maxDepth) || (context.children.size >= MAX_DOWNLOAD_WORKER) || newUrls.isEmpty) {
+        if (openUrls.nonEmpty) {
+          workOnOpen()
+        }
+      }
+      else {
+        val workers: Iterable[ActorRef] = createWorkers(newUrls.size)
+        val workerIt = workers.iterator
+        for (url <- newUrls) {
+          val tuple = (webPage.level + 1, url)
+          if (workerIt.hasNext) {
+            download(workerIt.next(), tuple)
+          } else {
+            newOpenUrls += tuple
+          }
+        }
+        // Assume workers are left, because no new open url has been added
+        openUrls ++= newOpenUrls
+        if (newOpenUrls.isEmpty) {
+          workOnOpen()
+        }
+      }
+    }
+
+    override def supervisorStrategy: OneForOneStrategy = OneForOneStrategy(maxNrOfRetries = 2, withinTimeRange = Duration.apply(100, TimeUnit.MILLISECONDS)) {
+      case _: MalformedURLException => Resume
+      case _: DownloadException => Resume
+      case _: IllegalStateException => Resume
+      case _ => Stop
+    }
+
     override def receive: PartialFunction[Any, Unit] = {
       case Action.START =>
-        owner = sender()
-        state = State.RUNNING
+        println(s"RECEIVE START: actor: ${self.path} from ${sender().path}")
         val worker = system.actorOf(Props(classOf[Downloader]), s"${classOf[Downloader].getName}_root_url")
-        registerForTimeout()
-        download(worker, (1, rootUrl))
+        context.watch(worker)
+        download(worker, (0, rootUrl))
       case webPage: WebPage =>
+        println(s"RECEIVE WebPage: actor: ${self.path} from ${sender().path}")
         handle(webPage)
-        if(currentUrls.isEmpty) {
-          owner ! visitedUrls
-        }
       case Action.STOP =>
-        println(s"STOPPING: actor: ${self.path}")
-        context.parent ! Action.STOP
-      case Timeout =>
-        context.children.foreach(context.stop)
+        println(s"'RECEIVE STOP: openUrl: ${openUrls.size}, visitedUrl: ${visitedUrls.size}, currentUrl: ${currentUrls.size} actor: ${self.path} from ${sender().path}")
+        context.children foreach (child => child ! PoisonPill)
         owner ! visitedUrls
-      case _ => super.receive
+      case Terminated(actor) =>
+        println(s"'RECEIVE Terminated: children: ${context.children.size} parent: ${self.path} child-actor: ${actor.path}")
+        if (openUrls.nonEmpty) {
+          workOnOpen()
+        } else if (context.children.isEmpty) {
+          self ! Action.STOP
+        }
     }
   }
 
   /**
+    * The downloader actor.
+    *
     * @author Thomas Herzog <herzog.thomas81@gmail.com>
     * @since 12/25/17
     */
@@ -178,27 +248,37 @@ object Application extends App {
 
     override def receive: PartialFunction[Any, Unit] = {
       case (level: Int, url: String) =>
-        println(s"Thread#id: '${Thread.currentThread().getId}' | url: ($level, $url)")
         try {
-          val urlCallFuture: Future[HttpResponse] = Http().singleRequest(HttpRequest(uri = url))
+          println(s"Thread#id: '${Thread.currentThread().getId}' | url: ($level, $url)")
+          val urlCallFuture: Future[HttpResponse] = Http().singleRequest(HttpRequest(uri = new URL(url).toExternalForm))
           val result: HttpResponse = Await.result(urlCallFuture, Duration.Inf)
           val status: StatusCode = result.status
           if (status.isFailure()) {
-            result.discardEntityBytes()
             context.sender() ! WebPage(level, url, s"ERROR: Download failed for status: '$status'")
           }
           context.sender() ! WebPage(level, url, Await.result(Unmarshal(result.entity).to[String], Duration.Inf))
+          result.discardEntityBytes()
         } catch {
-          case t: Throwable => context.sender() ! WebPage(level, url, t.getMessage)
+          case t: MalformedURLException =>
+            println(s"EXCEPTION: ${self.path}, $t")
+            throw t
+          case t: Throwable => println(s"EXCEPTION: ${self.path}, $t")
+            throw new DownloadException(s"Download failed: ${t.getMessage}", t)
         } finally {
-          self ! Action.STOP
+          context.stop(self)
         }
-      case _ => super.receive
+      case Timeout =>
+        println(s"'RECEIVE Timeout: actor: ${self.path} from ${sender().path}")
+        self ! Action.STOP
+      case Terminated(actor) =>
+        println(s"'RECEIVE Terminated: parent: ${self.path} child-actor: ${actor.path}")
     }
   }
 
   class ApplicationDownloaderMain extends BaseActor {
     val downloader: ActorRef = system.actorOf(Props(classOf[Downloader]), s"${classOf[Downloader].getName}")
+
+    context.system.scheduler.scheduleOnce(240.seconds, self, Timeout)
 
     override def receive: PartialFunction[Any, Unit] = {
       case Action.START =>
@@ -206,34 +286,54 @@ object Application extends App {
       case Action.STOP =>
         context.stop(downloader)
         context.stop(self)
-        context.system.terminate()
+        Await.result(Http().shutdownAllConnectionPools(), Duration.apply(5, TimeUnit.SECONDS))
+        materializer.shutdown()
+        Await.result(context.system.terminate(), Duration.apply(5, TimeUnit.SECONDS))
       case WebPage(_, url, _) =>
         println(s"Url: $url \r\n content: ")
         self ! Action.STOP
-      case _ => super.receive
+      case Terminated(actor) =>
+        println(s"'RECEIVE Terminated: parent: ${self.path} child-actor: ${actor.path}")
     }
   }
 
   class ApplicationCrawlerMain extends BaseActor {
-    val crawler: ActorRef = system.actorOf(Props(classOf[Crawler], "https://www.fh-ooe.at/campus-hagenberg/", 3, ".*.".r), s"${classOf[Crawler].getName}")
+    val crawler: ActorRef = system.actorOf(Props(classOf[Crawler], self, "https://www.fh-ooe.at/campus-hagenberg/", 7, ".*.".r), s"${classOf[Crawler].getName}")
 
-    registerForTimeout()
+    context.system.scheduler.scheduleOnce(240.seconds, self, Timeout)
+
+    override def supervisorStrategy: OneForOneStrategy = OneForOneStrategy(maxNrOfRetries = 2, withinTimeRange = Duration.apply(100, TimeUnit.MILLISECONDS)) {
+      case _ => Resume
+    }
 
     override def receive: PartialFunction[Any, Unit] = {
       case Action.START =>
         crawler ! Action.START
       case pages: mutable.Set[WebPage] =>
-        println(s"Crawled Pages: $pages")
+        println(s"===============================================")
+        println(s"Page Count: ${pages.size}")
+        println(s"Pages     :")
+        pages foreach println
+        println(s"===============================================")
         context.stop(crawler)
         context.stop(self)
-        context.system.terminate()
-      case _ => super.receive
+        Await.result(Http().shutdownAllConnectionPools(), Duration.apply(10, TimeUnit.SECONDS))
+        materializer.shutdown()
+        Await.result(context.system.terminate(), Duration.apply(10, TimeUnit.SECONDS))
+      case Timeout =>
+        println(s"'RECEIVE Timeout: actor: ${self.path} from ${sender().path}")
+        crawler ! Action.STOP
+        // Graceful shutdown not possible when aborting, because of stream errors of akka http
+      case Terminated(actor) =>
+        println(s"'RECEIVE Terminated: parent: ${self.path} child-actor: ${actor.path}")
     }
   }
 
   //val app: ActorRef = system.actorOf(Props(classOf[ApplicationDownloaderMain]), s"${classOf[ApplicationDownloaderMain].getName}")
   //app ! Action.START
 
-  val app: ActorRef = system.actorOf(Props(classOf[ApplicationCrawlerMain]), s"${classOf[ApplicationCrawlerMain].getName}")
+  val app: ActorRef = system.actorOf(Props(classOf[ApplicationCrawlerMain]), s"${
+    classOf[ApplicationCrawlerMain].getName
+  }")
   app ! Action.START
 }
