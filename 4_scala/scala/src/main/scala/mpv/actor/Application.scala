@@ -1,11 +1,11 @@
 package mpv.actor
 
-import java.net.{MalformedURLException, URL}
+import java.net.URL
 import java.util
-import java.util.UUID
 import java.util.concurrent.TimeUnit
+import java.util.{Collections, UUID}
 
-import akka.actor.SupervisorStrategy.{Resume, Stop}
+import akka.actor.SupervisorStrategy.{Escalate, Resume, Stop}
 import akka.actor.{Actor, ActorRef, ActorSystem, OneForOneStrategy, PoisonPill, Props, Terminated}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.{HttpRequest, HttpResponse, StatusCode}
@@ -24,25 +24,44 @@ import scala.util.{Failure, Random, Success}
   */
 object Application extends App {
 
-  implicit val system = ActorSystem("ApplicationHttpAkka")
-  implicit val materializer = ActorMaterializer()
+  // region Traits, Companion Objects, case classes and so on
+  implicit val system: ActorSystem = ActorSystem("ApplicationHttpAkka")
+  implicit val materializer: ActorMaterializer = ActorMaterializer()
   implicit val executionContext: ExecutionContextExecutor = system.dispatcher
 
-  val MAX_DOWNLOAD_WORKER = 30
+  var searchEngines: util.Set[String] = Collections.synchronizedSet(new util.HashSet[String]())
 
   object Timeout
 
   object Action extends Enumeration {
-    val START, STOP, HARD_SHUTDOWN, GRACEFUL_SHUTDOWN = Value
+    val START, STOP, HARD_SHUTDOWN, GRACEFUL_SHUTDOWN, REMOVE = Value
+  }
+
+
+  object WebPage {
+    val ANCHOR_TAG_PATTERN: Regex = "(?i)<a ([^>]+)>.+?</a>".r
+    val HREF_ATTR_PATTERN: Regex = """\s*(?i)href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^'">\s]+))\s*""".r
   }
 
   class DownloadException(private val message: String = "",
                           private val cause: Throwable = None.orNull)
     extends RuntimeException(message, cause)
 
-  object WebPage {
-    val ANCHOR_TAG_PATTERN = "(?i)<a ([^>]+)>.+?</a>".r
-    val HREF_ATTR_PATTERN = """\s*(?i)href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^'">\s]+))\s*""".r
+  trait TimeUtil {
+    def differenceInMillis(thenMillis: Long): Long = {
+      System.currentTimeMillis() - thenMillis
+    }
+
+    def differenceInSeconds(thenMillis: Long): Long = {
+      differenceInMillis(thenMillis) / 1000
+    }
+  }
+
+  trait SearchEngine {
+    def search(url: String, pattern: Regex, depth: Int = 0,
+               maxDuration: FiniteDuration = 3.seconds): Future[Set[WebPage]]
+
+    def shutdown(): Future[Terminated]
   }
 
   case class WebPage(level: Int, url: String, var content: String) {
@@ -80,6 +99,8 @@ object Application extends App {
     }
   }
 
+  // endregion
+
   /**
     * The base actor which is the base for all implemented actors and provides common
     * functionality.
@@ -111,8 +132,10 @@ object Application extends App {
     * @param maxDepth the maximum depth of to search links
     * @param pattern  the search pattern for the web pages
     */
-  class Crawler(owner: ActorRef, rootUrl: String, maxDepth: Int, pattern: Regex) extends BaseActor {
+  class Crawler(owner: ActorRef, rootUrl: String, maxDepth: Int, maxWorkers: Int, pattern: Regex) extends BaseActor {
     val random: Random = new Random()
+    val maxDownloadDuration: FiniteDuration = 1.seconds
+
     var visitedPages = mutable.Set.empty[WebPage]
     var queuedUrls = mutable.Set.empty[(Int, String)]
     var foundUrls = mutable.Set.empty[String]
@@ -138,17 +161,18 @@ object Application extends App {
       * @return the created workers, an empty list if no workers could be created
       */
     def createWorkers(requestWorkers: Int): Iterable[ActorRef] = {
-      val availableCount = MAX_DOWNLOAD_WORKER - context.children.size
+      val availableCount = maxWorkers - context.children.size
       var actualCount: Int = requestWorkers
       if (requestWorkers > availableCount) {
         actualCount = availableCount
       }
-      println(s"actualCount: $actualCount | children: ${context.children.size}")
+      // If workers can be created for downloading
       if (actualCount > 0) {
-        val workers: Seq[ActorRef] = (1 to actualCount).map(_ => context.actorOf(Props(classOf[Downloader]), s"${classOf[Downloader].getName}_${UUID.randomUUID().toString}"))
+        val workers: Seq[ActorRef] = (1 to actualCount).map(_ => context.actorOf(Props(classOf[Downloader], maxDownloadDuration), s"${classOf[Downloader].getName}_${UUID.randomUUID().toString}"))
         workers foreach context.watch
         workers
-      } else {
+      }
+      else {
         Iterable.empty[ActorRef]
       }
     }
@@ -183,14 +207,15 @@ object Application extends App {
       foundUrls += webPage.url
       downloadingUrls -= webPage.url
 
+      if (pattern.findFirstIn(webPage.content).nonEmpty) {
+        visitedPages += webPage
+      }
+
       if (!skipProcessing) {
         val newUrls: mutable.Set[String] = (mutable.Set.empty[String] ++ webPage.findAbsoluteLinks()) --= foundUrls
         var newOpenUrls = mutable.Set.empty[(Int, String)]
 
-        if (pattern.findFirstIn(webPage.content).nonEmpty) {
-          visitedPages += webPage
-        }
-        if (((webPage.level + 1) > maxDepth) || (context.children.size >= MAX_DOWNLOAD_WORKER) || newUrls.isEmpty) {
+        if (((webPage.level + 1) > maxDepth) || newUrls.isEmpty) {
           if (queuedUrls.nonEmpty) {
             downloadOpenUrls()
           }
@@ -208,7 +233,7 @@ object Application extends App {
           }
           // Assume workers are left, because no new open url has been added
           queuedUrls ++= newOpenUrls
-          if (newOpenUrls.isEmpty) {
+          if (newOpenUrls.isEmpty && context.children.size < maxWorkers) {
             downloadOpenUrls()
           }
         }
@@ -216,17 +241,15 @@ object Application extends App {
     }
 
     override def supervisorStrategy: OneForOneStrategy = OneForOneStrategy(maxNrOfRetries = 2, withinTimeRange = Duration.apply(100, TimeUnit.MILLISECONDS)) {
-      case _: MalformedURLException => Resume
-      case _: DownloadException => Resume
-      case _: IllegalStateException => Resume
-      case _ => Stop
+      case _: DownloadException => Stop
+      case _ => Escalate
     }
 
     override def receive: PartialFunction[Any, Unit] = {
       // Starts the crawler by downloading the root url web page
       case Action.START =>
         println(s"RECEIVE START: actor: ${self.path} from ${sender().path}")
-        val worker = system.actorOf(Props(classOf[Downloader]), s"${classOf[Downloader].getName}_${UUID.randomUUID().toString}")
+        val worker = system.actorOf(Props(classOf[Downloader], maxDownloadDuration), s"${classOf[Downloader].getName}_${UUID.randomUUID().toString}")
         context.watch(worker)
         download(worker, (0, rootUrl))
       // Stops by sending the result to the owner actor
@@ -251,7 +274,7 @@ object Application extends App {
         self ! Action.GRACEFUL_SHUTDOWN
       // Called each t ime a download actor terminates
       case Terminated(actor) =>
-        println(s"'RECEIVE Terminated: children: ${context.children.size} parent: ${self.path} child-actor: ${actor.path}")
+        println(s"'RECEIVE Terminated: children: ${context.children.size}, openUrl: ${queuedUrls.size}, visitedUrl: ${foundUrls.size}, currentUrl: ${downloadingUrls.size}, parent: ${self.path} child-actor: ${actor.path}")
         if (!skipProcessing && queuedUrls.nonEmpty) {
           downloadOpenUrls()
         } else if (context.children.isEmpty) {
@@ -266,7 +289,10 @@ object Application extends App {
     * @author Thomas Herzog <herzog.thomas81@gmail.com>
     * @since 12/25/17
     */
-  class Downloader extends BaseActor {
+  class Downloader(maxDuration: FiniteDuration = 10.seconds) extends BaseActor {
+
+    // Restrict download duration
+    context.system.scheduler.scheduleOnce(maxDuration, self, Timeout)
 
     override def receive: PartialFunction[Any, Unit] = {
       case (level: Int, url: String) =>
@@ -281,9 +307,6 @@ object Application extends App {
           context.sender() ! WebPage(level, url, Await.result(Unmarshal(result.entity).to[String], Duration.Inf))
           result.discardEntityBytes()
         } catch {
-          case t: MalformedURLException =>
-            println(s"EXCEPTION: ${self.path}, $t")
-            throw t
           case t: Throwable => println(s"EXCEPTION: ${self.path}, $t")
             throw new DownloadException(s"Download failed: ${t.getMessage}", t)
         } finally {
@@ -296,7 +319,7 @@ object Application extends App {
   }
 
   class ApplicationDownloaderMain extends BaseActor {
-    val downloader: ActorRef = system.actorOf(Props(classOf[Downloader]), s"${classOf[Downloader].getName}")
+    val downloader: ActorRef = system.actorOf(Props(classOf[Downloader], 10.seconds), s"${classOf[Downloader].getName}")
 
     context.system.scheduler.scheduleOnce(240.seconds, self, Timeout)
 
@@ -318,7 +341,7 @@ object Application extends App {
   }
 
   class ApplicationCrawlerMain extends BaseActor {
-    val crawler: ActorRef = system.actorOf(Props(classOf[Crawler], self, "https://www.fh-ooe.at/campus-hagenberg/", 7, ".*.".r), s"${classOf[Crawler].getName}")
+    val crawler: ActorRef = system.actorOf(Props(classOf[Crawler], self, "https://www.fh-ooe.at/campus-hagenberg/", 7, 32, ".*.".r), s"${classOf[Crawler].getName}")
 
     context.system.scheduler.scheduleOnce(240.seconds, self, Timeout)
 
@@ -349,14 +372,10 @@ object Application extends App {
     }
   }
 
-  trait SearchEngine {
-    def search(url: String, pattern: Regex, depth: Int = 0,
-               maxDuration: FiniteDuration = 3.seconds): Future[Set[WebPage]]
-
-    def shutdown(): Future[Terminated]
-  }
-
-  class ApplicationSearchEngine extends BaseActor with SearchEngine {
+  /**
+    * Application for testing the search engine which uses crawlers to search for texts in linked web pages
+    */
+  class ApplicationSearchEngine(maxWorkers: Int) extends BaseActor with SearchEngine with TimeUtil {
 
     var crawler: ActorRef = _
     var shutdownPromise: Promise[Terminated] = Promise()
@@ -365,13 +384,17 @@ object Application extends App {
     var counter: Int = 0
 
     /**
-      * Performs the system shutdown which wull stop the actor system as well
+      * Performs the system shutdown which will stop the actor system as well
       */
     private def systemShutdown(): Unit = {
       context.stop(self)
-      Await.ready(Http().shutdownAllConnectionPools(), Duration.apply(5, TimeUnit.SECONDS))
-      materializer.shutdown()
-      Await.ready(context.system.terminate(), Duration.apply(5, TimeUnit.SECONDS))
+      searchEngines remove self.path.name
+      // Last one turns of the light :)
+      if (searchEngines.isEmpty) {
+        Await.ready(Http().shutdownAllConnectionPools(), Duration.apply(5, TimeUnit.SECONDS))
+        materializer.shutdown()
+        Await.ready(context.system.terminate(), Duration.apply(5, TimeUnit.SECONDS))
+      }
       shutdownInProgress = false
 
       shutdownPromise.success(null)
@@ -380,7 +403,7 @@ object Application extends App {
     override def search(url: String, pattern: Regex, depth: Int, maxDuration: FiniteDuration): Future[Set[WebPage]] = {
       // Create crawler for search
       counter += 1
-      val crawler: ActorRef = system.actorOf(Props(classOf[Crawler], self, url, depth, pattern), s"${classOf[Crawler].getName}_$counter")
+      val crawler: ActorRef = system.actorOf(Props(classOf[Crawler], self, url, depth, maxWorkers, pattern), s"${self.path.name}_${classOf[Crawler].getName}_$counter")
       // Register timeout
       context.system.scheduler.scheduleOnce(maxDuration, crawler, Timeout)
       // watch teh crawler
@@ -408,19 +431,9 @@ object Application extends App {
     }
 
     override def receive: PartialFunction[Any, Unit] = {
-      case Action.START =>
-        search("https://www.fh-ooe.at/campus-hagenberg/", ".*.".r, 10, 5.seconds) onComplete {
-          case Success(data) => println(s"1. Search completed: $data")
-          case Failure(ex) => println(s"1. Search failed: $ex")
-        }
-        search("https://www.google.at/", ".*.".r, 10, 10.seconds) onComplete {
-          case Success(data) => println(s"2. Search completed: $data")
-          case Failure(ex) => println(s"2. Search failed: $ex")
-        }
-        search("https://www.dynatrace.de/", ".*.".r, 10, 15.seconds) onComplete {
-          case Success(data) => println(s"3. Search completed: $data")
-          case Failure(ex) => println(s"3. Search failed: $ex")
-        }
+      case "test_multiple_downloads_in_time" => test_multiple_downloads_in_time()
+      case "test_multiple_downloads_timeout" => test_multiple_downloads_timeout()
+      case Action.GRACEFUL_SHUTDOWN =>
         shutdownInProgress = true
       case pages: mutable.Set[WebPage] =>
         println(s"'RECEIVE result: actor: ${self.path} from ${sender().path}")
@@ -444,10 +457,50 @@ object Application extends App {
           systemShutdown()
         }
     }
+
+    def test_multiple_downloads_in_time(): Unit = {
+      val now = System.currentTimeMillis()
+      search("https://www.fh-ooe.at/campus-hagenberg/", ".*.".r, 3, 5.minutes) onComplete {
+        case Success(data) =>
+          println(s"test_multiple_downloads_in_time\n\t 1. Search completed: \n\t Url: 'https://www.fh-ooe.at/campus-hagenberg/' \n\t size: ${data.size}  \n\t result: $data  \n\t seconds: ${differenceInSeconds(now)}")
+        case Failure(ex) =>
+          println(s"test_multiple_downloads_in_time\n\t 1. Search failed: $ex  \n\t seconds: ${differenceInSeconds(now)}")
+      }
+      search("https://www.google.at/", ".*.".r, 3, 5.minutes) onComplete {
+        case Success(data) =>
+          println(s"test_multiple_downloads_in_time\n\t 2. Search completed: \n\t Url: 'https://www.google.at/' \n\t size: ${data.size}  \n\t result: $data  \n\t seconds: ${differenceInSeconds(now)}")
+        case Failure(ex) =>
+          println(s"test_multiple_downloads_in_time\n\t 2. Search failed: $ex  \n\t seconds: ${differenceInSeconds(now)}")
+      }
+    }
+
+    def test_multiple_downloads_timeout(): Unit = {
+      val now = System.currentTimeMillis()
+
+      search("https://www.fh-ooe.at/campus-hagenberg/", ".*.".r, 10, 5.seconds) onComplete {
+        case Success(data) =>
+          println(s"test_multiple_downloads_timeout\n\t 1. Search completed: \n\t Url: 'https://www.fh-ooe.at/campus-hagenberg/' \n\t size: ${data.size} \n\t result: $data \n\t seconds: ${differenceInSeconds(now)}")
+        case Failure(ex) =>
+          println(s"test_multiple_downloads_timeout\n\t 1. Search failed: $ex  \n\t seconds: ${differenceInSeconds(now)}")
+      }
+      search("https://www.google.at/", ".*.".r, 10, 10.seconds) onComplete {
+        case Success(data) => println(s"test_multiple_downloads_timeout\n\t 2. Search completed: \n\t Url: 'https://www.google.at/' \n\t size: ${data.size} \n\t result: $data \n\t seconds: ${differenceInSeconds(now)}")
+        case Failure(ex) => println(s"test_multiple_downloads_timeout\n\t 2. Search failed: $ex  \n\t seconds: ${differenceInSeconds(now)}")
+      }
+    }
   }
 
-  val app: ActorRef = system.actorOf(Props(classOf[ApplicationSearchEngine]), s"${
+  val app1: ActorRef = system.actorOf(Props(classOf[ApplicationSearchEngine], 5), s"${
     classOf[ApplicationSearchEngine].getName
-  }")
-  app ! Action.START
+  }_test_multiple_downloads_in_time")
+  searchEngines add app1.path.name
+  app1 ! "test_multiple_downloads_in_time"
+  app1 ! Action.GRACEFUL_SHUTDOWN
+
+  val app2: ActorRef = system.actorOf(Props(classOf[ApplicationSearchEngine], 5), s"${
+    classOf[ApplicationSearchEngine].getName
+  }_test_multiple_downloads_timeout")
+  searchEngines add app2.path.name
+  app2 ! "test_multiple_downloads_timeout"
+  app2 ! Action.GRACEFUL_SHUTDOWN
 }
