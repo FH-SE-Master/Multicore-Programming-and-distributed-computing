@@ -134,7 +134,7 @@ object Application extends App {
     */
   class Crawler(owner: ActorRef, rootUrl: String, maxDepth: Int, maxWorkers: Int, pattern: Regex) extends BaseActor {
     val random: Random = new Random()
-    val maxDownloadDuration: FiniteDuration = 1.seconds
+    val maxDownloadDuration: FiniteDuration = 1.second
 
     var visitedPages = mutable.Set.empty[WebPage]
     var queuedUrls = mutable.Set.empty[(Int, String)]
@@ -426,7 +426,7 @@ object Application extends App {
       shutdownPromise.future
     }
 
-    override def supervisorStrategy: OneForOneStrategy = OneForOneStrategy(maxNrOfRetries = 2, withinTimeRange = Duration.apply(100, TimeUnit.MILLISECONDS)) {
+    override def supervisorStrategy: OneForOneStrategy = OneForOneStrategy(maxNrOfRetries = 2, withinTimeRange = Duration.apply(1, TimeUnit.SECONDS)) {
       case _ => Resume
     }
 
@@ -490,14 +490,14 @@ object Application extends App {
     }
   }
 
-  val app1: ActorRef = system.actorOf(Props(classOf[ApplicationSearchEngine], 5), s"${
+  val app1: ActorRef = system.actorOf(Props(classOf[ApplicationSearchEngine], 8), s"${
     classOf[ApplicationSearchEngine].getName
   }_test_multiple_downloads_in_time")
   searchEngines add app1.path.name
   app1 ! "test_multiple_downloads_in_time"
   app1 ! Action.GRACEFUL_SHUTDOWN
 
-  val app2: ActorRef = system.actorOf(Props(classOf[ApplicationSearchEngine], 5), s"${
+  val app2: ActorRef = system.actorOf(Props(classOf[ApplicationSearchEngine], 8), s"${
     classOf[ApplicationSearchEngine].getName
   }_test_multiple_downloads_timeout")
   searchEngines add app2.path.name
