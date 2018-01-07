@@ -5,13 +5,11 @@
 #include <array>
 #include "pfc_bitmap.h"
 #include "pfc_complex.h"
-#include "pfc_parallel.h"
 
-CATTR_CONST const auto PICTURE_COUNT{ 5 };
-CATTR_CONST const auto MAX_ITERATIONS{ 1000 };
-CATTR_CONST const auto SIZE{ 1000 };
+CATTR_CONST const auto PICTURE_COUNT{ 25 };
+CATTR_CONST const auto MAX_ITERATIONS{ 100 };
+CATTR_CONST const auto SIZE{ 5000 };
 CATTR_CONST auto const RGB_COLOR_SIZE { 16 };
-const auto CPU_COUNT{ pfc::hardware_concurrency() };
 
 pfc::bitmap::pixel_t RGB_MAPPING[RGB_COLOR_SIZE] {
 	pfc::bitmap::pixel_t{ 15, 30, 66, 0 } , pfc::bitmap::pixel_t{ 26, 7, 25, 0 } , pfc::bitmap::pixel_t{ 47, 1, 9, 0 } , pfc::bitmap::pixel_t{ 73, 4, 4, 0 } ,
@@ -37,4 +35,7 @@ auto const gpu_grid_size = build_gpu_grid_size(
 
 const std::string DIR_GPU_TEST = "gpu-test/";
 const std::string DIR_CPU_TEST = "cpu-test/";
+const std::string FILE_HOST_RESULT = "result.csv";
+int const TASK_COUNTS[]{ 2,4,8,16,32,64,128,256,512,1024 };
+
 #endif
