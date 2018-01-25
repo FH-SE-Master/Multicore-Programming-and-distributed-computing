@@ -16,6 +16,7 @@ CATTR_DEVICE void calculate_fractal_part(const int size,
 	pfc::bitmap::pixel_t* pixels,
 	pfc::bitmap::pixel_t* rgb_map) {
 
+	#pragma unroll_completely
 	if (row < size && col < size) {
 		auto c_re = __fmul_rn(__fdiv_rn((col - size), 2.0f), 4.0f) / size;
 		auto c_im = __fmul_rn(__fdiv_rn((row - size), 2.0f),  4.0f) / size;
