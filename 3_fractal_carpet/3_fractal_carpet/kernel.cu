@@ -9,15 +9,22 @@
 #include "pfc_cuda_exception.h"
 #include "pfc_parallel.h"
 #include "device.hpp"
-#include "host.hpp"
+#include <device_functions.h>
+
+template <typename duration_t>
+CATTR_HOST void display_results(std::string name, int tasks, duration_t duration) {
+	auto const targetMillis = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+
+	std::cout << "name: " << name << " | tasks: " << tasks << " | millis: " << targetMillis << std::endl;
+}
 
 __global__ void CATTR_LBOUNDS(1024, 8) fractal_kernel(pfc::complex<float> start,
 	const int maxIterations,
 	const int size,
 	pfc::bitmap::pixel_t * result) {
 
-	auto row{ blockIdx.x*blockDim.x + threadIdx.x };
-	auto col{ blockIdx.y*blockDim.y + threadIdx.y };
+	auto row{ __fmul_rn(blockIdx.x, blockDim.x) + threadIdx.x };
+	auto col{ __fmul_rn(blockIdx.y,blockDim.y) + threadIdx.y };
 
 	calculate_fractal_part(size, maxIterations, row, col, start, result, RGB_MAPPING);
 }
@@ -93,7 +100,6 @@ CATTR_HOST void inline test_gpu_global_parallel_local_serial() {
 int main()
 {
 	initialize_gpu();
-	prepare_host_file();
 
 	std::cout << std::endl;
 
