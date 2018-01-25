@@ -14,13 +14,12 @@
 __global__ void CATTR_LBOUNDS(1024, 8) fractal_kernel(pfc::complex<float> start,
 	const int maxIterations,
 	const int size,
-	pfc::bitmap::pixel_t * result,
-	pfc::bitmap::pixel_t* rgb_map) {
+	pfc::bitmap::pixel_t * result) {
 
 	auto row{ blockIdx.x*blockDim.x + threadIdx.x };
 	auto col{ blockIdx.y*blockDim.y + threadIdx.y };
 
-	calculate_fractal_part(size, maxIterations, row, col, start, result, rgb_map);
+	calculate_fractal_part(size, maxIterations, row, col, start, result, RGB_MAPPING);
 }
 
 CATTR_HOST void initialize_gpu() {
@@ -52,7 +51,7 @@ CATTR_HOST void inline execute_gpu_global_parallel_local_serial(const int pictur
 		for (int i = 0; i < pictureCount; ++i) {
 			dim3 grid_size((size + block_size.x - 1) / block_size.x, (size + block_size.y - 1) / block_size.y);
 			pfc::bitmap bitmap(size, size);
-			fractal_kernel << < grid_size, block_size >> > (pfc::complex<float>(0, 0), maxIterations, size, device_pixels, device_rgb_map);
+			fractal_kernel << < grid_size, block_size >> > (pfc::complex<float>(0, 0), maxIterations, size, device_pixels);
 			PFC_CUDA_CHECK(cudaGetLastError());
 			PFC_CUDA_CHECK(cudaDeviceSynchronize()); // synchronize with device, means wait for it
 			PFC_CUDA_CHECK(cudaGetLastError());

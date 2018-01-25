@@ -6,12 +6,12 @@
 #include "pfc_bitmap.h"
 #include "pfc_complex.h"
 
-const auto PICTURE_COUNT{ 25 };
-const auto MAX_ITERATIONS{ 100 };
-const auto SIZE{ 500000 };
-auto const RGB_COLOR_SIZE { 16 };
+CATTR_CONST const auto PICTURE_COUNT{ 25 };
+CATTR_CONST const auto MAX_ITERATIONS{ 100 };
+CATTR_CONST const auto SIZE{ 500000 };
+CATTR_CONST auto const RGB_COLOR_SIZE { 16 };
 
-pfc::bitmap::pixel_t RGB_MAPPING[RGB_COLOR_SIZE] {
+CATTR_CONST pfc::bitmap::pixel_t RGB_MAPPING[RGB_COLOR_SIZE] {
 	pfc::bitmap::pixel_t{ 15, 30, 66, 0 } , pfc::bitmap::pixel_t{ 26, 7, 25, 0 } , pfc::bitmap::pixel_t{ 47, 1, 9, 0 } , pfc::bitmap::pixel_t{ 73, 4, 4, 0 } ,
 	pfc::bitmap::pixel_t{ 100, 7, 0, 0 } , pfc::bitmap::pixel_t{ 138, 44, 12, 0 } , pfc::bitmap::pixel_t{ 177, 82, 24, 0 } ,
 	pfc::bitmap::pixel_t{ 209, 125, 57, 0 } , pfc::bitmap::pixel_t{ 229, 181, 134, 0 } , pfc::bitmap::pixel_t{ 248, 236, 211, 0 } ,
