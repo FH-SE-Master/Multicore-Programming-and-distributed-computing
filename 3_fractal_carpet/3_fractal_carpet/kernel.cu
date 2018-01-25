@@ -11,7 +11,7 @@
 #include "device.hpp"
 #include "host.hpp"
 
-CATTR_KERNEL void fractal_kernel(pfc::complex<float> start,
+CATTR_KERNEL void fractal_kernel(pfc::complex<double> start,
 	const int maxIterations,
 	const int size,
 	pfc::bitmap::pixel_t * result,
@@ -52,13 +52,13 @@ CATTR_HOST void inline execute_gpu_global_parallel_local_serial(const int pictur
 		for (int i = 0; i < pictureCount; ++i) {
 			dim3 grid_size((size + block_size.x - 1) / block_size.x, (size + block_size.y - 1) / block_size.y);
 			pfc::bitmap bitmap(size, size);
-			fractal_kernel << < grid_size, block_size >> > (pfc::complex<float>(0, 0), maxIterations, size, device_pixels, device_rgb_map);
+			fractal_kernel << < grid_size, block_size >> > (pfc::complex<double>(0, 0), maxIterations, size, device_pixels, device_rgb_map);
 			PFC_CUDA_CHECK(cudaGetLastError());
 			PFC_CUDA_CHECK(cudaDeviceSynchronize()); // synchronize with device, means wait for it
 			PFC_CUDA_CHECK(cudaGetLastError());
 			PFC_CUDA_MEMCPY(bitmap.get_pixels(), device_pixels, size*size, cudaMemcpyDeviceToHost);
 
-			bitmap.to_file(DIR_GPU_TEST + "fractal-gpu_" + std::to_string(block_size.x) + "_" + std::to_string(block_size.y) + "_" + std::to_string(i) + ".jpg");
+			//bitmap.to_file(DIR_GPU_TEST + "fractal-gpu_" + std::to_string(block_size.x) + "_" + std::to_string(block_size.y) + "_" + std::to_string(i) + ".jpg");
 		}
 
 		CUDA_FREE(device_pixels);
@@ -76,18 +76,13 @@ CATTR_HOST void inline test_gpu_global_parallel_local_serial() {
 
 	for each (auto task_count in TASK_COUNTS)
 	{
-		auto duration_cpu = mpv_runtime::run_with_measure(1, [&]
-		{
-			execute_fractal_parallel_each_picture(
-				task_count, PICTURE_COUNT, SIZE, MAX_ITERATIONS, DIR_CPU_TEST);
-		});
 
 		auto duration_gpu = mpv_runtime::run_with_measure(1, [&]
 		{
 			execute_gpu_global_parallel_local_serial(PICTURE_COUNT, MAX_ITERATIONS, SIZE, task_count);
 		});
 
-		save_and_display_host_results("GPU-GPLS", task_count, duration_cpu, duration_gpu);
+		display_results("GPU-GPLS", task_count, duration_gpu);
 	}
 
 	std::cout
@@ -101,12 +96,9 @@ int main()
 	initialize_gpu();
 	prepare_host_file();
 
-	std::cout << "CPUs: " << pfc::hardware_concurrency() << std::endl;
 	std::cout << std::endl;
 
 	test_gpu_global_parallel_local_serial();
-	test_host_globally_parallel_locally_sequential(PICTURE_COUNT);
-	test_host_globally_sequential_locally_parallel(PICTURE_COUNT);
 }
 
 

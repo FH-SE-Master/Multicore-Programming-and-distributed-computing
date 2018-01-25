@@ -8,7 +8,7 @@
 
 CATTR_CONST const auto PICTURE_COUNT{ 25 };
 CATTR_CONST const auto MAX_ITERATIONS{ 100 };
-CATTR_CONST const auto SIZE{ 5000 };
+CATTR_CONST const auto SIZE{ 500000 };
 CATTR_CONST auto const RGB_COLOR_SIZE { 16 };
 
 pfc::bitmap::pixel_t RGB_MAPPING[RGB_COLOR_SIZE] {
