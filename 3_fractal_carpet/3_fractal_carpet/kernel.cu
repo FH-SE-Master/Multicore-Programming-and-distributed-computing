@@ -11,7 +11,7 @@
 #include "device.hpp"
 #include "host.hpp"
 
-CATTR_KERNEL void fractal_kernel(pfc::complex<float> start,
+__global__ void CATTR_LBOUNDS(1024, 8) fractal_kernel(pfc::complex<float> start,
 	const int maxIterations,
 	const int size,
 	pfc::bitmap::pixel_t * result,
