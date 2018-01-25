@@ -11,7 +11,7 @@
 #include "device.hpp"
 #include "host.hpp"
 
-CATTR_KERNEL void fractal_kernel(pfc::complex<double> start,
+CATTR_KERNEL void fractal_kernel(pfc::complex<float> start,
 	const int maxIterations,
 	const int size,
 	pfc::bitmap::pixel_t * result,
@@ -52,7 +52,7 @@ CATTR_HOST void inline execute_gpu_global_parallel_local_serial(const int pictur
 		for (int i = 0; i < pictureCount; ++i) {
 			dim3 grid_size((size + block_size.x - 1) / block_size.x, (size + block_size.y - 1) / block_size.y);
 			pfc::bitmap bitmap(size, size);
-			fractal_kernel << < grid_size, block_size >> > (pfc::complex<double>(0, 0), maxIterations, size, device_pixels, device_rgb_map);
+			fractal_kernel << < grid_size, block_size >> > (pfc::complex<float>(0, 0), maxIterations, size, device_pixels, device_rgb_map);
 			PFC_CUDA_CHECK(cudaGetLastError());
 			PFC_CUDA_CHECK(cudaDeviceSynchronize()); // synchronize with device, means wait for it
 			PFC_CUDA_CHECK(cudaGetLastError());

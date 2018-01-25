@@ -41,7 +41,7 @@ CATTR_HOST void inline execute_fractal_serial_each_picture(const int picture_cou
 	{
 		pfc::bitmap bitmap{size, size};
 		//std::cout << "Calculating single thread (picture-" << i << ")" << std::endl;
-		calculate_fractal(size, max_iterations, 0, size, pfc::complex<double>(0, 0), bitmap.get_pixels(), RGB_MAPPING);
+		calculate_fractal(size, max_iterations, 0, size, pfc::complex<float>(0, 0), bitmap.get_pixels(), RGB_MAPPING);
 		const auto filename = prefix + "fractal-execute_fractal_serial_each_picture_" + std::to_string(i) +
 			".jpg";
 		bitmap.to_file(filename);
@@ -68,7 +68,7 @@ CATTR_HOST void inline execute_fractal_serial_each_rows(const int picture_count,
 				end_row += rest_size;
 			}
 			//std::cout << "Calculating single thread (part-" << i << ")" << std::endl;
-			calculate_fractal(size, max_iterations, start_row, end_row, pfc::complex<double>(0, 0), bitmap.get_pixels(), RGB_MAPPING);
+			calculate_fractal(size, max_iterations, start_row, end_row, pfc::complex<float>(0, 0), bitmap.get_pixels(), RGB_MAPPING);
 			start_row = end_row;
 		}
 		const auto filename = prefix + "fractal-execute_fractal_serial_each_rows_" + std::to_string(i) + ".jpg";
@@ -89,7 +89,7 @@ CATTR_HOST void inline execute_fractal_parallel_each_picture(const int task_coun
 	pfc::parallel_range(task_group, task_count, picture_count, [size, prefix, max_iterations](int chunk, int begin, int end)
                     {
 	                    pfc::bitmap bitmap{size, size};
-	                    calculate_fractal(size, max_iterations, 0, size, pfc::complex<double>(0, 0),
+	                    calculate_fractal(size, max_iterations, 0, size, pfc::complex<float>(0, 0),
 	                                      bitmap.get_pixels(), RGB_MAPPING);
 	                    const auto filename = prefix + "fractal-execute_fractal_parallel_each_picture_" + std::
 		                    to_string(chunk) + "_" + std::to_string(begin) + "_" + std::to_string(chunk) + ".jpg";
@@ -118,7 +118,7 @@ CATTR_HOST void inline execute_fractal_parallel_each_rows(const int task_count,
 		pfc::parallel_range(task_group, task_count, size,
 		                    [size, max_iterations, task_count, &bitmaps, i](int chunk, int begin, int end)
 	                    {
-		                    calculate_fractal(size, max_iterations, begin, end, pfc::complex<double>(0, 0),
+		                    calculate_fractal(size, max_iterations, begin, end, pfc::complex<float>(0, 0),
 		                                      bitmaps[i].get_pixels(), RGB_MAPPING);
 	                    });
 	}

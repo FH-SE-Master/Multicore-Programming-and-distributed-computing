@@ -11,7 +11,7 @@ CATTR_HOST_DEV_INL void calculate_fractal_part(const int size,
 	const int max_iterations,
 	const int row,
 	const int col,
-	const pfc::complex<double> initial_value,
+	const pfc::complex<float> initial_value,
 	pfc::bitmap::pixel_t* pixels,
 	pfc::bitmap::pixel_t* rgb_map) {
 
@@ -19,8 +19,8 @@ CATTR_HOST_DEV_INL void calculate_fractal_part(const int size,
 		auto c_re = (col - size / 2.0) * 4.0 / size;
 		auto c_im = (row - size / 2.0) * 4.0 / size;
 
-		pfc::complex<double> c(c_re, c_im);
-		pfc::complex<double> z(0, 0);
+		pfc::complex<float> c(c_re, c_im);
+		pfc::complex<float> z(0, 0);
 
 		int i;
 		for (i = 0; i < max_iterations && norm(z) < 2.0; i++)
@@ -36,7 +36,7 @@ CATTR_HOST_DEV_INL void calculate_fractal(const int size,
 	const int max_iterations,
 	const int start_row,
 	const int end_row,
-	const pfc::complex<double> initial_value,
+	const pfc::complex<float> initial_value,
 	pfc::bitmap::pixel_t* pixels,
 	pfc::bitmap::pixel_t* rgb_map)
 {
