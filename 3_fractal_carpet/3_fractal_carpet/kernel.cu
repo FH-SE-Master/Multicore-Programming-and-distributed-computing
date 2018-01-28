@@ -10,8 +10,6 @@
 #include "pfc_parallel.h"
 #include "device.hpp"
 #include <device_functions.h>
-<<<<<<< HEAD
-=======
 
 CATTR_CONST pfc::bitmap::pixel_t gpu_color_mapping[RGB_COLOR_SIZE];
 
@@ -21,16 +19,8 @@ CATTR_HOST void display_results(std::string name, int tasks, duration_t duration
 
 	std::cout << "name: " << name << " | block_size: {" << tasks << "," << tasks << "}" << " | millis: " << targetMillis << std::endl;
 }
->>>>>>> Branch_double_to_float
 
-template <typename duration_t>
-CATTR_HOST void display_results(std::string name, int tasks, duration_t duration) {
-	auto const targetMillis = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
-
-	std::cout << "name: " << name << " | tasks: " << tasks << " | millis: " << targetMillis << std::endl;
-}
-
-__global__ void CATTR_LBOUNDS(1024, 8) fractal_kernel(pfc::complex<float> start,
+CATTR_KERNEL void fractal_kernel(pfc::complex<float> start,
 	const int maxIterations,
 	const int size,
 	pfc::bitmap::pixel_t * result) {
@@ -38,11 +28,7 @@ __global__ void CATTR_LBOUNDS(1024, 8) fractal_kernel(pfc::complex<float> start,
 	auto row{ __fmul_rn(blockIdx.x, blockDim.x) + threadIdx.x };
 	auto col{ __fmul_rn(blockIdx.y,blockDim.y) + threadIdx.y };
 
-<<<<<<< HEAD
-	calculate_fractal_part(size, maxIterations, row, col, start, result, RGB_MAPPING);
-=======
 	calculate_fractal_part(size, maxIterations, row, col, start, result, gpu_color_mapping);
->>>>>>> Branch_double_to_float
 }
 
 CATTR_HOST void initialize_gpu() {
