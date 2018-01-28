@@ -31,14 +31,23 @@ CATTR_HOST void initialize_gpu() {
 		auto const deviceInfo{ pfc::cuda::get_device_info() };
 		auto const deviceProps{ pfc::cuda::get_device_props() };
 
-		std::cout << "Device name       : " << deviceProps.name << std::endl;
-		std::cout << "Cmpute Capability : " << deviceInfo.cc_major << "." << deviceInfo.cc_minor << std::endl;
-		std::cout << "Arch              : " << deviceInfo.uarch << std::endl;
+		std::cout << "-----------------------------------------------------" << std::endl;
+		std::cout << "Device Metadata:" << std::endl;
+		std::cout << "-----------------------------------------------------" << std::endl;
+		std::cout << "Device: " << deviceProps.name << std::endl;
+		std::cout << "Compute capability: " << deviceInfo.cc_major << "." << deviceInfo.cc_minor << std::endl;
+		std::cout << "Arch: " << deviceInfo.uarch << std::endl;
+		std::cout << "Cores: " << deviceInfo.cores_sm << std::endl;
+		std::cout << "Global memory: " << deviceProps.totalGlobalMem / 1024 / 1024 << " MB" << std::endl;
+		std::cout << "Shared memory per block: " << deviceProps.sharedMemPerBlock / 1024 << " KB" << std::endl;
+		std::cout << "Shared memory per multiprocessor: " << deviceProps.sharedMemPerMultiprocessor / 1024 << " KB" << std::endl;
+		std::cout << "Max threads per block: " << deviceInfo.max_threads_block << std::endl;
+		std::cout << "-----------------------------------------------------" << std::endl;
 		std::cout << std::endl;
 	}
 }
 
-CATTR_HOST void inline execute_gpu_global_parallel_local_serial(const int pictureCount, 
+CATTR_HOST void inline execute_gpu_global_parallel_local_serial(const int pictureCount,
 	const int size,
 	const int maxIterations,
 	dim3 block_size) {
@@ -48,7 +57,7 @@ CATTR_HOST void inline execute_gpu_global_parallel_local_serial(const int pictur
 		pfc::bitmap::pixel_t* device_rgb_map{ CUDA_MALLOC(pfc::bitmap::pixel_t, 16) };
 
 		CUDA_MEMCPY(device_rgb_map, RGB_MAPPING, RGB_COLOR_SIZE, cudaMemcpyHostToDevice);
-		
+
 		for (int i = 0; i < pictureCount; ++i) {
 			dim3 grid_size((size + block_size.x - 1) / block_size.x, (size + block_size.y - 1) / block_size.y);
 			pfc::bitmap bitmap(size, size);
@@ -74,12 +83,12 @@ CATTR_HOST void inline test_gpu_global_parallel_local_serial() {
 		<< "Start GPU tests 'GPLS'" << std::endl
 		<< "#################################################################################" << std::endl;
 
-	for each (auto task_count in TASK_COUNTS)
+	for each (unsigned int task_count in TASK_COUNTS)
 	{
 
 		auto duration_gpu = mpv_runtime::run_with_measure(1, [&]
 		{
-			execute_gpu_global_parallel_local_serial(PICTURE_COUNT, MAX_ITERATIONS, SIZE, task_count);
+			execute_gpu_global_parallel_local_serial(PICTURE_COUNT, MAX_ITERATIONS, SIZE, dim3{ task_count ,task_count });
 		});
 
 		display_results("GPU-GPLS", task_count, duration_gpu);
@@ -94,7 +103,6 @@ CATTR_HOST void inline test_gpu_global_parallel_local_serial() {
 int main()
 {
 	initialize_gpu();
-	prepare_host_file();
 
 	std::cout << std::endl;
 
