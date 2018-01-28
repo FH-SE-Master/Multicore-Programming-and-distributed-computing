@@ -19,7 +19,11 @@ CATTR_DEVICE void calculate_fractal_part(const int size,
 	#pragma unroll_completely
 	if (row < size && col < size) {
 		auto c_re = __fmul_rn(__fdiv_rn((col - size), 2.0f), 4.0f) / size;
+<<<<<<< HEAD
 		auto c_im = __fmul_rn(__fdiv_rn((row - size), 2.0f),  4.0f) / size;
+=======
+		auto c_im = __fmul_rn(__fdiv_rn((row - size), 2.0f), 4.0f) / size;
+>>>>>>> Branch_double_to_float
 
 		pfc::complex<float> c(c_re, c_im);
 		pfc::complex<float> z(0.0f, 0.0f);
@@ -42,6 +46,7 @@ CATTR_DEVICE void calculate_fractal(const int size,
 	pfc::bitmap::pixel_t* pixels,
 	pfc::bitmap::pixel_t* rgb_map)
 {
+	#pragma unroll_completely
 	for (auto row = start_row; row < end_row; row++)
 	{
 		for (auto col = 0; col < size; col++)

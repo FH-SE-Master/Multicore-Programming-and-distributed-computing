@@ -27,6 +27,16 @@ CATTR_HOST void save_and_display_host_results(std::string name, int tasks, durat
 	datafile.close();
 }
 
+<<<<<<< HEAD
+=======
+template <typename duration_t>
+CATTR_HOST void display_results(std::string name, int tasks, duration_t duration) {
+	auto const targetMillis = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+
+	std::cout << "name: " << name << " | block_size: {" << tasks << "," << tasks << "}" << " | millis: " << targetMillis << std::endl;
+}
+
+>>>>>>> Branch_double_to_float
 CATTR_HOST void inline execute_fractal_serial_each_picture(const int picture_count, const int size,
                                                          const int max_iterations, const std::string prefix = "")
 {
