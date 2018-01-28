@@ -8,7 +8,7 @@
 
 CATTR_CONST const auto PICTURE_COUNT{ 25 };
 CATTR_CONST const auto MAX_ITERATIONS{ 100 };
-CATTR_CONST const auto SIZE{ 500000 };
+CATTR_CONST const auto SIZE{ 25000 };
 CATTR_CONST auto const RGB_COLOR_SIZE { 16 };
 
 pfc::bitmap::pixel_t RGB_MAPPING[RGB_COLOR_SIZE] {
@@ -36,6 +36,6 @@ auto const gpu_grid_size = build_gpu_grid_size(
 const std::string DIR_GPU_TEST = "gpu-test/";
 const std::string DIR_CPU_TEST = "cpu-test/";
 const std::string FILE_HOST_RESULT = "result.csv";
-int const TASK_COUNTS[]{ 2,4,8,16,32,64,128,256,512,1024 };
+int const TASK_COUNTS[]{ 2,4,8,16,32 };
 
 #endif
