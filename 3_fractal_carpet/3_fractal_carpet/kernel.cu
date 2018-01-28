@@ -9,18 +9,26 @@
 #include "pfc_cuda_exception.h"
 #include "pfc_parallel.h"
 #include "device.hpp"
-#include "host.hpp"
+#include <device_functions.h>
+
+CATTR_CONST pfc::bitmap::pixel_t gpu_color_mapping[RGB_COLOR_SIZE];
+
+template <typename duration_t>
+CATTR_HOST void display_results(std::string name, int tasks, duration_t duration) {
+	auto const targetMillis = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+
+	std::cout << "name: " << name << " | block_size: {" << tasks << "," << tasks << "}" << " | millis: " << targetMillis << std::endl;
+}
 
 CATTR_KERNEL void fractal_kernel(pfc::complex<float> start,
 	const int maxIterations,
 	const int size,
-	pfc::bitmap::pixel_t * result,
-	pfc::bitmap::pixel_t* rgb_map) {
+	pfc::bitmap::pixel_t * result) {
 
-	auto row{ blockIdx.x*blockDim.x + threadIdx.x };
-	auto col{ blockIdx.y*blockDim.y + threadIdx.y };
+	auto row{ __fmul_rn(blockIdx.x, blockDim.x) + threadIdx.x };
+	auto col{ __fmul_rn(blockIdx.y,blockDim.y) + threadIdx.y };
 
-	calculate_fractal_part(size, maxIterations, row, col, start, result, rgb_map);
+	calculate_fractal_part(size, maxIterations, row, col, start, result, gpu_color_mapping);
 }
 
 CATTR_HOST void initialize_gpu() {
@@ -54,14 +62,15 @@ CATTR_HOST void inline execute_gpu_global_parallel_local_serial(const int pictur
 	try {
 
 		pfc::bitmap::pixel_t* device_pixels{ CUDA_MALLOC(pfc::bitmap::pixel_t, size*size) };
-		pfc::bitmap::pixel_t* device_rgb_map{ CUDA_MALLOC(pfc::bitmap::pixel_t, 16) };
+		//pfc::bitmap::pixel_t* device_rgb_map{ CUDA_MALLOC(pfc::bitmap::pixel_t, 16) };
 
-		CUDA_MEMCPY(device_rgb_map, RGB_MAPPING, RGB_COLOR_SIZE, cudaMemcpyHostToDevice);
+		PFC_CUDA_CHECK(cudaMemcpyToSymbol(gpu_color_mapping, &RGB_MAPPING, RGB_COLOR_SIZE));
+		//CUDA_MEMCPY(gpu_color_mapping, RGB_MAPPING, RGB_COLOR_SIZE, cudaMemcpyHostToDevice);
 
 		for (int i = 0; i < pictureCount; ++i) {
 			dim3 grid_size((size + block_size.x - 1) / block_size.x, (size + block_size.y - 1) / block_size.y);
 			pfc::bitmap bitmap(size, size);
-			fractal_kernel << < grid_size, block_size >> > (pfc::complex<float>(0, 0), maxIterations, size, device_pixels, device_rgb_map);
+			fractal_kernel << < grid_size, block_size >> > (pfc::complex<float>(0, 0), maxIterations, size, device_pixels);
 			PFC_CUDA_CHECK(cudaGetLastError());
 			PFC_CUDA_CHECK(cudaDeviceSynchronize()); // synchronize with device, means wait for it
 			PFC_CUDA_CHECK(cudaGetLastError());
